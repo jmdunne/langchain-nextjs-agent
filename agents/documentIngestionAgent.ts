@@ -5,7 +5,7 @@ export async function documentIngestionAgent(
   rawDocumentation: string
 ): Promise<Document[]> {
   const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 1000,
+    chunkSize: 10000,
     chunkOverlap: 200,
   });
 

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { scrapeWebpage } from "../../../utils/scraper";
 import { documentIngestionAgent } from "../../../agents/documentIngestionAgent";
 import { informationExtractionAgent } from "../../../agents/informationExtractionAgent";
@@ -6,23 +6,64 @@ import { competitiveResearchAgent } from "../../../agents/competitiveResearchAge
 import { analysisComparisonAgent } from "../../../agents/analysisComparisonAgent";
 import { reportGenerationAgent } from "../../../agents/reportGenerationAgent";
 
-export async function POST(req: Request) {
-  const { url } = await req.json();
+export const runtime = 'edge'; // Enable Edge Runtime for SSE support
 
-  try {
-    const scrapedContent = await scrapeWebpage(url);
-    const documents = await documentIngestionAgent(scrapedContent);
-    const extractedInfo = await informationExtractionAgent(documents);
-    const competitorInfo = await competitiveResearchAgent(extractedInfo);
-    const comparison = await analysisComparisonAgent(extractedInfo, competitorInfo);
-    const report = await reportGenerationAgent(comparison);
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const url = searchParams.get('url');
 
-    return NextResponse.json({ report });
-  } catch (error: unknown) {
-    console.error("Error in analysis:", error);
-    if (error instanceof Error && (error.message.includes("429") || error.message.includes("quota"))) {
-      return NextResponse.json({ error: "Service is temporarily unavailable due to high demand. Please try again later." }, { status: 503 });
-    }
-    return NextResponse.json({ error: "An error occurred during analysis" }, { status: 500 });
+  if (!url) {
+    return new Response('Missing URL parameter', { status: 400 });
   }
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendEvent = (event: string, data: object) => {
+        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+      };
+
+      try {
+        // Stage 1: Web Scraping
+        sendEvent('stage', { stage: 'Web Scraping' });
+        const scrapedContent = await scrapeWebpage(url);
+
+        // Stage 2: Document Ingestion
+        sendEvent('stage', { stage: 'Document Ingestion' });
+        const documents = await documentIngestionAgent(scrapedContent);
+
+        // Stage 3: Information Extraction
+        sendEvent('stage', { stage: 'Information Extraction' });
+        const extractedInfo = await informationExtractionAgent(documents, url);
+
+        // Stage 4: Competitive Research
+        sendEvent('stage', { stage: 'Competitive Research' });
+        const competitorInfo = await competitiveResearchAgent(extractedInfo, url);
+
+        // Stage 5: Analysis Comparison
+        sendEvent('stage', { stage: 'Analysis Comparison' });
+        const comparison = await analysisComparisonAgent(extractedInfo, competitorInfo, url);
+
+        // Stage 6: Report Generation
+        sendEvent('stage', { stage: 'Report Generation' });
+        const report = await reportGenerationAgent(comparison, url);
+
+        // Complete
+        sendEvent('complete', { report });
+        controller.close();
+      } catch (error: unknown) {
+        console.error("Error in analysis:", error);
+        sendEvent('error', { message: 'An error occurred during analysis' });
+        controller.error(error);
+      }
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no', // For nginx
+    },
+  });
 }
