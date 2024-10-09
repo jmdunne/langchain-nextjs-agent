@@ -3,46 +3,47 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SideNav } from "@/app/components/sidenav";
+import { AnalysisStages } from "@/app/components/analysisstages";
 
 export default function Home() {
   const [url, setUrl] = useState("");
   const [report, setReport] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [completedStages, setCompletedStages] = useState<string[]>([]);
+  const [stageUpdates, setStageUpdates] = useState<{ [key: string]: string[] }>({});
   const [error, setError] = useState("");
-  const [analysisStarted, setAnalysisStarted] = useState(false);
-  
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     setIsLoading(true);
     setReport("");
-    setCompletedStages([]);
+    setStageUpdates({});
     setError("");
-    setAnalysisStarted(true);  // Add this line
 
     const eventSource = new EventSource(`/api/analyze?url=${encodeURIComponent(url)}`);
 
-    eventSource.addEventListener('stage', (event) => {
+    eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      setCompletedStages((prevStages) => [...prevStages, data.stage]);
-    });
+      if (data.stage === "complete") {
+        setReport(data.message);
+        setIsLoading(false);
+        eventSource.close();
+      } else if (data.stage === "error") {
+        setError(data.message);
+        setIsLoading(false);
+        eventSource.close();
+      } else {
+        setStageUpdates((prev) => ({
+          ...prev,
+          [data.stage]: [...(prev[data.stage] || []), data.message],
+        }));
+      }
+    };
 
-    eventSource.addEventListener('complete', (event) => {
-      const data = JSON.parse(event.data);
-      setReport(data.report);
+    eventSource.onerror = () => {
+      setError("An error occurred while connecting to the server");
       setIsLoading(false);
       eventSource.close();
-    });
-
-    eventSource.addEventListener('error', (event) => {
-      if (event instanceof ErrorEvent) {
-        setError(event.message || "An error occurred");
-      } else {
-        setError("An unknown error occurred");
-      }
-      setIsLoading(false);
-    });
+    };
   };
 
   return (
@@ -52,8 +53,8 @@ export default function Home() {
         setUrl={setUrl}
         handleSubmit={handleSubmit}
         isLoading={isLoading}
-        completedStages={completedStages}
-        analysisStarted={analysisStarted}  // Add this line
+        stageUpdates={stageUpdates}
+        analysisStarted={isLoading}
       />
       <main className="flex-1 p-8 overflow-y-auto">
         {error && (
@@ -62,8 +63,10 @@ export default function Home() {
           </div>
         )}
 
+        <AnalysisStages stageUpdates={stageUpdates} />
+
         {report && (
-          <Card className="w-full">
+          <Card className="w-full mt-8">
             <CardHeader>
               <CardTitle>Analysis Report</CardTitle>
             </CardHeader>

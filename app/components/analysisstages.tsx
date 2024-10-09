@@ -2,38 +2,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CircularProgress } from "./circularprogress";
 
 const stages = [
-  {
-    name: "Web Scraping",
-    description: "Extracting content from the provided URL",
-  },
-  {
-    name: "Document Ingestion",
-    description: "Processing and splitting the scraped content",
-  },
-  {
-    name: "Information Extraction",
-    description: "Extracting key product information",
-  },
-  {
-    name: "Competitive Research",
-    description: "Researching competitor information",
-  },
-  {
-    name: "Analysis Comparison",
-    description: "Comparing product with competitors",
-  },
-  {
-    name: "Report Generation",
-    description: "Generating the final analysis report",
-  },
+  "Web Scraping",
+  "Document Ingestion",
+  "Information Extraction",
+  "Competitive Research",
+  "Analysis Comparison",
+  "Report Generation",
 ];
 
-export function AnalysisStages({ completedStages }: { completedStages: string[] }) {
+export function AnalysisStages({ stageUpdates }: { stageUpdates: { [key: string]: string[] } }) {
   return (
     <div className="flex flex-col gap-2">
       {stages.map((stage, index) => {
-        const isCompleted = completedStages.includes(stage.name);
-        const isActive = !isCompleted && completedStages.length === index;
+        const updates = stageUpdates[stage] || [];
+        const isCompleted = updates.length > 0 && !updates[updates.length - 1].startsWith("Error");
+        const isActive = updates.length > 0 && !isCompleted;
         const progress = isCompleted ? 100 : (isActive ? 50 : 0);
 
         let borderColor = "border-gray-300";
@@ -57,12 +40,16 @@ export function AnalysisStages({ completedStages }: { completedStages: string[] 
           >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
-                {stage.name}
+                {stage}
               </CardTitle>
               <CircularProgress progress={progress} size={16} strokeWidth={2} color={progressColor} />
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-gray-500">{stage.description}</p>
+              <ul className="text-xs text-gray-500">
+                {updates.map((update, i) => (
+                  <li key={i}>{update}</li>
+                ))}
+              </ul>
             </CardContent>
           </Card>
         );

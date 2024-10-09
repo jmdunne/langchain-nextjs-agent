@@ -1,41 +1,90 @@
+import { DynamicStructuredTool } from "@langchain/core/tools";
 import { ChatOpenAI } from "@langchain/openai";
 import { PromptTemplate } from "@langchain/core/prompts";
+import { z } from "zod";
 
-export async function competitiveResearchAgent(
-  productInfo: string,
-  url: string
-): Promise<string> {
-  const model = new ChatOpenAI({
-    temperature: 0.7, // Higher temperature for creativity
-    modelName: "gpt-4",
-  });
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF = 1000; // 1 second
 
-  const prompt = new PromptTemplate({
-    template: `
-You are a seasoned market research analyst.
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-Based on the product information below for the product at {url}:
+const competitiveResearchTool = new DynamicStructuredTool({
+  name: "CompetitiveResearcher",
+  description: "Performs competitive research based on product information",
+  schema: z.object({
+    productInfo: z.string().describe("Information about the product"),
+    url: z.string().describe("URL of the product"),
+  }),
+  func: async ({ productInfo, url }) => {
+    const model = new ChatOpenAI({
+      temperature: 0.7,
+      modelName: "gpt-4o-mini",
+    });
+
+    const prompt = PromptTemplate.fromTemplate(`
+You are a seasoned market research analyst. Analyze the following product information for {url}:
 
 {productInfo}
 
-Research and provide detailed information about the main competitors and their similar products. For each competitor, include:
+Provide detailed information about the main competitors and their similar products. For each competitor, include:
 
-- **Competitor Name**:
-- **Product Name**:
-- **Product Description**:
-- **Key Features and Benefits**:
-- **Pricing**:
-- **Market Share**:
-- **Strengths and Weaknesses**:
-- **Unique Selling Proposition (USP)**:
+- Competitor Name
+- Product Name
+- Product Description (brief)
+- Key Features and Benefits (list top 3-5)
+- Pricing (if available)
+- Estimated Market Share
+- Main Strengths
+- Main Weaknesses
+- Unique Selling Proposition (USP)
 
-Conclude with a summary comparing these competitors to the product in question, highlighting areas where the product stands out or falls short.`,
-    inputVariables: ["url", "productInfo"],
-  });
+Conclude with a brief summary (2-3 sentences) comparing these competitors to the product in question, highlighting key differentiators.
 
-  const chain = prompt.pipe(model);
+Limit your response to the most relevant information to keep it concise.
+    `);
 
-  const competitorInfo = await chain.invoke({ url, productInfo });
+    const chain = prompt.pipe(model);
 
-  return competitorInfo.content as string;
-}
+    let retries = MAX_RETRIES;
+    let backoff = INITIAL_BACKOFF;
+
+    while (retries > 0) {
+      try {
+        const result = await chain.invoke({ url, productInfo });
+        return result.content as string;
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "rate_limit_exceeded" &&
+          retries > 0
+        ) {
+          console.log(
+            `Rate limit exceeded. Retrying in ${backoff / 1000} seconds...`
+          );
+          await delay(backoff);
+          retries--;
+          backoff *= 2; // Exponential backoff
+        } else {
+          console.error("Error in competitiveResearchAgent:", error);
+          throw error;
+        }
+      }
+    }
+
+    throw new Error(
+      "Max retries reached. Unable to complete competitive research."
+    );
+  },
+});
+
+export const competitiveResearchAgent = async (input: {
+  productInfo: string;
+  url: string;
+}) => {
+  console.log("competitiveResearchAgent input:", { productInfoLength: input.productInfo.length, url: input.url });
+  const result = await competitiveResearchTool.invoke(input);
+  console.log("competitiveResearchAgent output:", { competitorInfoLength: result.length });
+  return result;
+};

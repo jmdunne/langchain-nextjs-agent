@@ -8,8 +8,8 @@ interface SideNavProps {
   setUrl: (url: string) => void;
   handleSubmit: (e: React.FormEvent) => void;
   isLoading: boolean;
-  completedStages: string[];
-  analysisStarted: boolean;  // Add this line
+  stageUpdates: Record<string, string[]>;
+  analysisStarted: boolean;
 }
 
 export function SideNav({
@@ -17,7 +17,7 @@ export function SideNav({
   setUrl,
   handleSubmit,
   isLoading,
-  completedStages,
+  stageUpdates,
   analysisStarted,
 }: SideNavProps) {
   return (
@@ -42,7 +42,7 @@ export function SideNav({
           </form>
         </CardContent>
       </Card>
-      {analysisStarted && <AnalysisStages completedStages={completedStages} />}
+      {analysisStarted && <AnalysisStages stageUpdates={stageUpdates} />}
     </aside>
   );
 }
