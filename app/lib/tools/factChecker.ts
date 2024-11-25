@@ -32,9 +32,13 @@ Finally, return the original report with any necessary corrections or annotation
     inputVariables: ["report"],
   });
 
-  const chain = prompt.pipe(model);
-
-  const factCheckResult = await chain.invoke({ report });
+  const formattedPrompt = await prompt.format({ report });
+  const response = await model.invoke(formattedPrompt);
+  const factCheckResult = typeof response.content === 'string' 
+    ? response.content 
+    : Array.isArray(response.content) 
+      ? response.content.map(c => typeof c === 'string' ? c : c.type === 'text' ? c.text : '').join('')
+      : '';
 
   // Combine the original report with the fact-check results
   const factCheckedReport = `
